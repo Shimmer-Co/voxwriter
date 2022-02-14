@@ -66,6 +66,11 @@ class ExportSomeData(Operator, ExportHelper):
 		min=0.01,
 		max=256.0,
 	)
+	visual_debug_mode: BoolProperty(
+		name="Visual Debugging Mode",
+		description="Suppresses exceptions and instead returns magenta voxels where the voxelizer would have raised an exception. Useful for seeing exactly where problems occurred instead of having to trawl through a backtrace",
+		default=False,
+	)
 
 	def draw(self, context):
 		layout = self.layout
@@ -91,6 +96,10 @@ class ExportSomeData(Operator, ExportHelper):
 		row = box.row()
 		row.prop(self, "use_default_palette")
 
+		box = layout.box()
+		row = box.row()
+		row.prop(self, "visual_debug_mode")
+
 	def execute(self, context):
 		print("running voxelize...")
 		voxelize(context.active_object,
@@ -99,7 +108,8 @@ class ExportSomeData(Operator, ExportHelper):
 				 use_default_palette=self.use_default_palette,
 				 use_selected_objects=self.use_selected_objects,
 				 use_scene_units=self.use_scene_units,
-				 voxel_unit_scale=self.voxel_unit_scale)
+				 voxel_unit_scale=self.voxel_unit_scale,
+				 visual_debug_mode=self.visual_debug_mode)
 		return {'FINISHED'}
 
 

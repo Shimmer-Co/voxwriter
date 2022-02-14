@@ -17,7 +17,7 @@ def TriangulateMesh( obj ):
 	bm.free()
 	
 # With help from https://blender.stackexchange.com/a/79251
-def get_color_from_geometry(obj, ray_origin, ray_direction, orig_scene=None, location=None, polygon_index=-1):
+def get_color_from_geometry(obj, ray_origin, ray_direction, orig_scene=None, location=None, polygon_index=-1, visual_debug_mode=False):
 	global image_tuples
 	
 	#raycast, or use polygon_index and location if already available
@@ -25,51 +25,57 @@ def get_color_from_geometry(obj, ray_origin, ray_direction, orig_scene=None, loc
 		if not orig_scene:
 			dg = bpy.context.evaluated_depsgraph_get()
 			orig_scene = bpy.context.scene.evaluated_get(dg)
-		success, location, normal, polygon_index, object, matrix = orig_scene.ray_cast(bpy.context.view_layer, ray_origin, ray_direction, distance=0.002)
+		success, location, _normal, polygon_index, _object, _matrix = orig_scene.ray_cast(bpy.context.view_layer, ray_origin, ray_direction, distance=0.002)
 		if not success:
 			return None
-	
-	# Find the UV map part corresponding to polygon_index
-	slots = obj.material_slots
-	material_index = obj.data.polygons[polygon_index].material_index
-	# if no material exists
-	if material_index >= len(slots) or material_index == -1:
-		return [0.8, 0.8, 0.8]
-	material = slots[obj.data.polygons[polygon_index].material_index].material
-	image = get_material_image(material)
-	# if no texture exists
-	if not image:
-		color = get_material_color(material)
-		return [color[0], color[1], color[2]]
-	
-	# get UV map vertices indices
-	verticesIndices = obj.data.polygons[polygon_index].vertices
-	p1, p2, p3 = [obj.data.vertices[verticesIndices[i]].co for i in range(3)]
-	uvMap = obj.data.uv_layers[obj.data.uv_layers.keys()[0]]
-	uv1, uv2, uv3 = [uvMap.data[obj.data.polygons[polygon_index].loop_indices[i]].uv for i in range(3)]
-	uv1 = Vector((uv1[0], uv1[1], 0))
-	uv2 = Vector((uv2[0], uv2[1], 0))
-	uv3 = Vector((uv3[0], uv3[1], 0))
-	transformed_point = barycentric_transform( location, p1, p2, p3, uv1, uv2, uv3 )
-	
-	width = image.size[0]
-	height = image.size[1]
-	
-	uv = Vector((transformed_point.x % 1.0, transformed_point.y % 1.0))
 
-	coord = (
-		round((uv[0] % 1.0) * width-1),
-		round((uv[1] % 1.0) * height-1),
-	)
-	pindex = int(((width * int(coord[1])) + int(coord[0])) * 4)
-	
-	# store images as tuples to avoid recreating the object each loop
-	if image.name not in image_tuples:
-		print('Adding image', image.name)
-		image_tuples[image.name] = tuple(image.pixels)
-	color = image_tuples[image.name][pindex:pindex+4]
-	
-	return color
+	try:
+		# Find the UV map part corresponding to polygon_index
+		slots = obj.material_slots
+		material_index = obj.data.polygons[polygon_index].material_index
+		# if no material exists
+		if material_index >= len(slots) or material_index == -1:
+			return [0.8, 0.8, 0.8]
+		material = slots[obj.data.polygons[polygon_index].material_index].material
+		image = get_material_image(material)
+		# if no texture exists
+		if not image:
+			color = get_material_color(material)
+			return [color[0], color[1], color[2]]
+
+		# get UV map vertices indices
+		verticesIndices = obj.data.polygons[polygon_index].vertices
+		p1, p2, p3 = [obj.data.vertices[verticesIndices[i]].co for i in range(3)]
+		uvMap = obj.data.uv_layers[obj.data.uv_layers.keys()[0]]
+		uv1, uv2, uv3 = [uvMap.data[obj.data.polygons[polygon_index].loop_indices[i]].uv for i in range(3)]
+		uv1 = Vector((uv1[0], uv1[1], 0))
+		uv2 = Vector((uv2[0], uv2[1], 0))
+		uv3 = Vector((uv3[0], uv3[1], 0))
+		transformed_point = barycentric_transform( location, p1, p2, p3, uv1, uv2, uv3 )
+
+		width = image.size[0]
+		height = image.size[1]
+
+		uv = Vector((transformed_point.x % 1.0, transformed_point.y % 1.0))
+
+		coord = (
+			round((uv[0] % 1.0) * width-1),
+			round((uv[1] % 1.0) * height-1),
+		)
+		pindex = int(((width * int(coord[1])) + int(coord[0])) * 4)
+
+		# store images as tuples to avoid recreating the object each loop
+		if image.name not in image_tuples:
+			print('Adding image', image.name)
+			image_tuples[image.name] = tuple(image.pixels)
+		color = image_tuples[image.name][pindex:pindex+4]
+
+		return color
+	except:
+		if visual_debug_mode:
+			return (1.0, 0.0, 1.0, 1.0)
+		else:
+			raise
 
 def get_material_image(material):
 	try:
@@ -159,7 +165,7 @@ def nearest_color_index(color, palette):
 	color = nearest_color(color, palette)
 	return palette.index(color)
 
-def voxelize(obj, file_path, vox_detail=32, use_default_palette=False, use_selected_objects=False, use_scene_units=False, voxel_unit_scale=1.0):
+def voxelize(obj, file_path, vox_detail=32, use_default_palette=False, use_selected_objects=False, use_scene_units=False, voxel_unit_scale=1.0, visual_debug_mode=False):
 	global image_tuples
 	image_tuples = {}
 	last_time = time.time()
@@ -176,17 +182,17 @@ def voxelize(obj, file_path, vox_detail=32, use_default_palette=False, use_selec
 	for o in bpy.context.selected_objects:
 		if o.type != "MESH":
 			o.select_set(False)
-	
+
 	bpy.ops.object.duplicate_move(OBJECT_OT_duplicate={"linked":False, "mode":"TRANSLATION"})
 	bpy.ops.object.join()
 	bpy.context.object.name = source_name+'_voxelized'
 	bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
 	bpy.ops.object.convert(target='MESH')
-	
+
 	target_name = bpy.context.object.name
 	target = bpy.data.objects[target_name]
 	TriangulateMesh(target)
-	
+
 	# voxelize
 
 	vox_size = max(target.dimensions) / vox_detail
@@ -195,20 +201,20 @@ def voxelize(obj, file_path, vox_detail=32, use_default_palette=False, use_selec
 	if use_scene_units:
 		vox_size = 1.0/voxel_unit_scale
 		vox_detail = max(0,min(256,round(max(target.dimensions))))
-	
+
 	half_size = vox_size * 0.5
 
 	a = np.zeros((vox_detail, vox_detail, vox_detail), dtype=int)
-	
+
 	dg = bpy.context.evaluated_depsgraph_get()
 	orig_scene = bpy.context.scene.evaluated_get(dg)
-	
+
 	if not use_default_palette:
 		palette = []
 	else:
 		palette = get_default_palette()[1:256]
 		print('Default palette length', len(palette))
-	
+
 	for x1 in range(0,vox_detail):
 		print(str(int(x1 / vox_detail * 100))+'%...')
 		x = bbox_min[0] + x1 * vox_size + half_size
@@ -232,7 +238,7 @@ def voxelize(obj, file_path, vox_detail=32, use_default_palette=False, use_selec
 							inside_location[1] + inside_normal[1] * 0.001,
 							inside_location[2] + inside_normal[2] * 0.001)
 						normal = (-inside_normal[0], -inside_normal[1], -inside_normal[2])
-						color = get_color_from_geometry(target, location, normal, orig_scene=orig_scene, location=inside_location, polygon_index=inside_face)
+						color = get_color_from_geometry(target, location, normal, orig_scene=orig_scene, location=inside_location, polygon_index=inside_face, visual_debug_mode=visual_debug_mode)
 						if color:
 							if len(color) == 4 and color[3] < 0.1:
 								continue
