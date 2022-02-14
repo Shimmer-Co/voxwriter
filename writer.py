@@ -56,7 +56,7 @@ def get_color_from_geometry(obj, ray_origin, ray_direction, orig_scene=None, loc
 	height = image.size[1]
 	
 	uv = Vector((transformed_point.x % 1.0, transformed_point.y % 1.0))
-	
+
 	coord = (
 		round((uv[0] % 1.0) * width-1),
 		round((uv[1] % 1.0) * height-1),

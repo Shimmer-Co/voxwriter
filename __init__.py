@@ -8,11 +8,17 @@ bl_info = {
 	"description": "Export to MagicaVoxel .vox",
 	"category": "Export"}
 
+# If script is being reloaded, make sure to also reload writer.py
+# Reloading scripts from Blender > Scripts > Reload All Scripts is a common dev workflow
+if "bpy" in locals():
+	import importlib
+	importlib.reload(locals()["writer"])
+
 import bpy
 from bpy_extras.io_utils import ExportHelper
 from bpy.props import StringProperty, BoolProperty, IntProperty, EnumProperty, FloatProperty
 from bpy.types import Operator
-
+from .writer import voxelize
 
 class ExportSomeData(Operator, ExportHelper):
 	"""Export the selected object to a MagicaVoxel .vox"""
@@ -86,7 +92,6 @@ class ExportSomeData(Operator, ExportHelper):
 		row.prop(self, "use_default_palette")
 
 	def execute(self, context):
-		from .writer import voxelize
 		print("running voxelize...")
 		voxelize(context.active_object,
 			     self.filepath,
