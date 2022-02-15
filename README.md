@@ -20,4 +20,5 @@ To install, click "Install..." in Blender Preferences > Add-ons and select the z
 - chunking into 256^3 sections
 - bresenham rectification--jagged lines/sampling bias
 - topology-aware voxelization--if geometry too thin
+- perf: compare square distance instead of distance
 - consider working from andstor/voxelizer instead, as GLTF is a more widely supported interchange format and a radically smaller feature set, fewer cases to consider

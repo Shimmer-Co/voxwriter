@@ -35,13 +35,14 @@ def get_color_from_geometry(obj, ray_origin, ray_direction, orig_scene=None, loc
 		material_index = obj.data.polygons[polygon_index].material_index
 		# if no material exists
 		if material_index >= len(slots) or material_index == -1:
-			return [0.8, 0.8, 0.8]
+			return [0.8, 0.8, 0.8, 1.0]
 		material = slots[obj.data.polygons[polygon_index].material_index].material
+		alpha = get_material_alpha(material)
 		image = get_material_image(material)
 		# if no texture exists
 		if not image:
-			color = get_material_color(material)
-			return [color[0], color[1], color[2]]
+			r, g, b, a = get_material_color(material)
+			return (r, g, b, a if alpha is None else blend_alpha(a, alpha))
 
 		# get UV map vertices indices
 		verticesIndices = obj.data.polygons[polygon_index].vertices
@@ -68,9 +69,9 @@ def get_color_from_geometry(obj, ray_origin, ray_direction, orig_scene=None, loc
 		if image.name not in image_tuples:
 			print('Adding image', image.name)
 			image_tuples[image.name] = tuple(image.pixels)
-		color = image_tuples[image.name][pindex:pindex+4]
 
-		return color
+		r, g, b, a = image_tuples[image.name][pindex:pindex+4]
+		return (r, g, b, a if alpha is None else blend_alpha(a, alpha))
 	except:
 		if visual_debug_mode:
 			return (1.0, 0.0, 1.0, 1.0)
@@ -120,20 +121,34 @@ def get_material_color(material):
 								return (color[0], color[1], color[2], color[3])
 	return (0.8, 0.8, 0.8, 1.0)
 
+def get_material_alpha(material):
+	if material:
+		if material.blend_method == 'BLEND':
+			socket = material.node_tree.nodes.get('Principled BSDF', None)
+			if socket:
+				return socket.inputs['Alpha'].default_value
+			else:
+				return None
+		else:
+			return 1.0
+
+def blend_alpha(a1, a2):
+	return 1 - (1 - a1) * (1 - a2)
+
 def get_closest_point(p, obj, max_dist=1.84467e+19):
 	# max_dist = 1.84467e+19
 	result, location, normal, face = obj.closest_point_on_mesh(p, distance=max_dist)
 	return result, location, normal, face
 
-def distance(c1, c2):
-	(r1,g1,b1) = c1
-	(r2,g2,b2) = c2
-	return math.sqrt((r1 - r2)**2 + (g1 - g2) ** 2 + (b1 - b2) **2)
+# def distance(c1, c2):
+# 	(r1,g1,b1) = c1
+# 	(r2,g2,b2) = c2
+# 	return math.sqrt((r1 - r2)**2 + (g1 - g2) ** 2 + (b1 - b2) **2)
 
 def color_distance(c1, c2):
-	(r1,g1,b1) = c1.r, c1.g, c1.b
-	(r2,g2,b2) = c2.r, c2.g, c2.b
-	return math.sqrt((r1 - r2)**2 + (g1 - g2) ** 2 + (b1 - b2) **2)
+	(r1,g1,b1,a1) = c1.r, c1.g, c1.b, c1.a
+	(r2,g2,b2,a2) = c2.r, c2.g, c2.b, c2.a
+	return math.sqrt((r1 - r2)**2 + (g1 - g2) ** 2 + (b1 - b2) ** 2 + (a1 - a2) ** 2)
 
 def find_center(o):
 	vcos = [ o.matrix_world @ v.co for v in o.data.vertices ]
@@ -240,9 +255,10 @@ def voxelize(obj, file_path, vox_detail=32, use_default_palette=False, use_selec
 						normal = (-inside_normal[0], -inside_normal[1], -inside_normal[2])
 						color = get_color_from_geometry(target, location, normal, orig_scene=orig_scene, location=inside_location, polygon_index=inside_face, visual_debug_mode=visual_debug_mode)
 						if color:
+							# CR-soon: this is an implied alpha clip of 0.1
 							if len(color) == 4 and color[3] < 0.1:
 								continue
-							color = Color(int(color[0]*255), int(color[1]*255), int(color[2]*255), 255)
+							color = Color(int(color[0]*255), int(color[1]*255), int(color[2]*255), int(color[3]*255))
 							threshold = max(7, min(12, len(palette) * 0.65))
 							palette, color_index = try_add_color_to_palette(color, palette, color_threshold=threshold)
 							#color_index = nearest_color_index(color, palette[1:])
