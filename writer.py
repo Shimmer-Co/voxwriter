@@ -199,12 +199,12 @@ def voxelize(obj, file_path, vox_detail=32, use_default_palette=False, use_selec
 	bbox_min, bbox_max = find_bounds(target)
 
 	if use_scene_units:
-		vox_size = 1.0/voxel_unit_scale
-		vox_detail = max(0,min(256,round(max(target.dimensions))))
+		vox_size = 1.0 / voxel_unit_scale
+		vox_detail = int(max(0, round(max(target.dimensions) * voxel_unit_scale)))
+		print("Vox detail:", vox_detail)
+		#vox_detail = max(0,min(256,round(max(target.dimensions))))
 
-	half_size = vox_size * 0.5
 
-	a = np.zeros((vox_detail, vox_detail, vox_detail), dtype=int)
 
 	dg = bpy.context.evaluated_depsgraph_get()
 	orig_scene = bpy.context.scene.evaluated_get(dg)
@@ -215,44 +215,58 @@ def voxelize(obj, file_path, vox_detail=32, use_default_palette=False, use_selec
 		palette = get_default_palette()[1:256]
 		print('Default palette length', len(palette))
 
-	for x1 in range(0,vox_detail):
-		print(str(int(x1 / vox_detail * 100))+'%...')
-		x = bbox_min[0] + x1 * vox_size + half_size
-		if x > bbox_max[0] + vox_size:
-			break
-		for y1 in range(0,vox_detail):
-			y = bbox_min[1] + y1 * vox_size + half_size
-			if y > bbox_max[1] + vox_size:
-				break
-			for z1 in range(0,vox_detail):
-				z = bbox_min[2] + z1 * vox_size + half_size
-				if z > bbox_max[2] + vox_size:
-					break
-				inside, inside_location, inside_normal, inside_face = get_closest_point(Vector((x,y,z)), target, max_dist=half_size*1.42)
-				if inside:
-					inside = (inside_location[0], inside_location[1], inside_location[2])
-					vox_min = (x-half_size,y-half_size,z-half_size)
-					vox_max = (x+half_size,y+half_size,z+half_size)
-					if inside > vox_min and inside < vox_max:
-						location = (inside_location[0] + inside_normal[0] * 0.001,
-							inside_location[1] + inside_normal[1] * 0.001,
-							inside_location[2] + inside_normal[2] * 0.001)
-						normal = (-inside_normal[0], -inside_normal[1], -inside_normal[2])
-						color = get_color_from_geometry(target, location, normal, orig_scene=orig_scene, location=inside_location, polygon_index=inside_face, visual_debug_mode=visual_debug_mode)
-						if color:
-							if len(color) == 4 and color[3] < 0.1:
-								continue
-							color = Color(int(color[0]*255), int(color[1]*255), int(color[2]*255), 255)
-							threshold = max(7, min(12, len(palette) * 0.65))
-							palette, color_index = try_add_color_to_palette(color, palette, color_threshold=threshold)
-							#color_index = nearest_color_index(color, palette[1:])
-							a[y1,(vox_detail-1)-z1,x1] = color_index+1
+	# CR: some dirty modifications just to try things out
+	# Dice the output into 128^3 cubes
+	dice_dim = 128
+	for x_base in range(0, vox_detail, dice_dim):
+		for y_base in range(0, vox_detail, dice_dim):
+			for z_base in range(0, vox_detail, dice_dim):
+				print("dice", x_base, y_base, z_base)
 
-	vox = Vox.from_dense(a)
-	print('Palette length', len(palette))
-	vox.palette = palette
-	VoxWriter(file_path, vox).write()
-	print('100%... Exported to', file_path)
+				a = np.zeros((dice_dim, dice_dim, dice_dim), dtype=int)
+				is_empty = True
+				half_size = vox_size * 0.5
+
+				for x1 in range(x_base, x_base + dice_dim):
+					#print(str(int(x1 / vox_detail * 100))+'%...')
+					x = bbox_min[0] + x1 * vox_size + half_size
+					if x > bbox_max[0] + vox_size:
+						break
+					for y1 in range(y_base, y_base + dice_dim):
+						y = bbox_min[1] + y1 * vox_size + half_size
+						if y > bbox_max[1] + vox_size:
+							break
+						for z1 in range(z_base, z_base + dice_dim):
+							z = bbox_min[2] + z1 * vox_size + half_size
+							if z > bbox_max[2] + vox_size:
+								break
+							inside, inside_location, inside_normal, inside_face = get_closest_point(Vector((x,y,z)), target, max_dist=half_size*1.42)
+							if inside:
+								inside = (inside_location[0], inside_location[1], inside_location[2])
+								vox_min = (x-half_size,y-half_size,z-half_size)
+								vox_max = (x+half_size,y+half_size,z+half_size)
+								if inside > vox_min and inside < vox_max:
+									location = (inside_location[0] + inside_normal[0] * 0.001,
+										inside_location[1] + inside_normal[1] * 0.001,
+										inside_location[2] + inside_normal[2] * 0.001)
+									normal = (-inside_normal[0], -inside_normal[1], -inside_normal[2])
+									color = get_color_from_geometry(target, location, normal, orig_scene=orig_scene, location=inside_location, polygon_index=inside_face, visual_debug_mode=visual_debug_mode)
+									if color:
+										if len(color) == 4 and color[3] < 0.1:
+											continue
+										color = Color(int(color[0]*255), int(color[1]*255), int(color[2]*255), 255)
+										threshold = max(7, min(12, len(palette) * 0.65))
+										palette, color_index = try_add_color_to_palette(color, palette, color_threshold=threshold)
+										#color_index = nearest_color_index(color, palette[1:])
+										a[y1 - y_base, (dice_dim - 1) - (z1 - z_base), x1 - x_base] = color_index + 1
+										is_empty = False
+
+				if not is_empty:
+					vox = Vox.from_dense(a)
+					print('Palette length', len(palette))
+					vox.palette = palette
+					VoxWriter("{}_{}_{}_{}.vox".format(file_path, x_base, y_base, z_base), vox).write()
+					print('100%... Exported to', file_path)
 	
 	# delete temporary target
 	bpy.ops.object.select_all(action='DESELECT')
